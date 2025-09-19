@@ -1,0 +1,15 @@
+[package]
+name = "koru_find"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bytes = "^1"
+clap = { version = "^4", features = [ "derive" ] }
+crossterm = "^0.29"
+ignore = { version = "^0.4", features = [ "simd-accel" ] }
+num_cpus = "1.17.0"
+regex = "^1"
+
+[dev-dependencies]
+pretty_assertions = { version = "^1", features = ["unstable"] }
