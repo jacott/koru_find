@@ -193,9 +193,9 @@ impl Matcher {
                         }
                     }
                     if c == '/' {
-                        Some(".*/".to_owned())
+                        Some("/.*".to_owned())
                     } else {
-                        Some(format!("[^/]*{}", regex::escape(&c.to_string())))
+                        Some(format!("{}[^/]*", regex::escape(&c.to_string())))
                     }
                 } else {
                     esc = true;
