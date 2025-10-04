@@ -192,7 +192,11 @@ impl Matcher {
                             c = ' '
                         }
                     }
-                    Some(format!(".*{}", regex::escape(&c.to_string())))
+                    if c == '/' {
+                        Some(".*/".to_owned())
+                    } else {
+                        Some(format!("[^/]*{}", regex::escape(&c.to_string())))
+                    }
                 } else {
                     esc = true;
                     None

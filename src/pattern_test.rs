@@ -148,6 +148,7 @@ fn simple_search() {
 
     assert!(pattern.all_matches(b"hello world"));
     assert!(pattern.all_matches(b"hfdfeffdlldfdo"));
+    assert!(!pattern.all_matches(b"hfdfef/fdlldfdo"));
     assert!(!pattern.all_matches(b"fdfeffdlldfdo"));
     assert!(!pattern.all_matches(b"hel"));
 
@@ -156,6 +157,17 @@ fn simple_search() {
     assert_eq!(pattern.clone_text(), "hel");
 
     assert!(pattern.all_matches(b"one hell world"));
+}
+
+#[test]
+fn slash_search() {
+    let pattern = Pattern::default();
+    assert_matches!(pattern.add("hello/world"), PatternScope::Narrow);
+    assert_eq!(pattern.version(), 1);
+
+    assert!(!pattern.all_matches(b"hello/wor/ld"));
+    assert!(pattern.all_matches(b"heello/worldd"));
+    assert!(pattern.all_matches(b"hello/cruel/world"));
 }
 
 #[test]
@@ -216,6 +228,6 @@ fn convert_to_re() {
             .write_matcher()
             .relaxed_re("a\\\\\\c([.*]\\s)")
             .as_str(),
-        &".*a.*\\\\.*c.*\\(.*\\[.*\\..*\\*.*\\].* .*\\)"
+        &"[^/]*a[^/]*\\\\[^/]*c[^/]*\\([^/]*\\[[^/]*\\.[^/]*\\*[^/]*\\][^/]* [^/]*\\)"
     );
 }

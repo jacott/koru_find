@@ -79,22 +79,22 @@ fn set() {
     wait_running(&mut walker, WT);
     let _ = rx.try_iter().take(5).count();
 
-    walker.command("set", "0 13").unwrap();
+    walker.command("set", "0 1/3").unwrap();
     wait_running(&mut walker, WT);
     assert_eq!(to_raf(&mut rx, 1), "-a/1/2.txt");
     assert_matches!(rx.try_recv(), Err(_));
 
-    walker.command("set", "1 2").unwrap();
+    walker.command("set", "1 /2").unwrap();
     assert_eq!(to_raf(&mut rx, 1), "-a/1/3.txt");
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkStarted);
     assert_eq!(to_raf(&mut rx, 1), "+a/1/2.txt");
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkDone);
 
-    walker.command("set", "2 tx").unwrap();
+    walker.command("set", "2 2tx").unwrap();
     wait_running(&mut walker, WT);
     assert_matches!(rx.try_recv(), Err(_));
 
-    walker.command("set", "1 2txt").unwrap();
+    walker.command("set", "1 /2txt").unwrap();
 
     wait_running(&mut walker, WT);
     assert_matches!(rx.try_recv(), Err(_));

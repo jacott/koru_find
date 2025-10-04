@@ -128,7 +128,7 @@ fn exceed_window_size() {
         files.sort();
         assert!(files == ["+a/1/2.txt"] || files == ["+a/1/3.txt"]);
 
-        let _ = in_writer.write(b"cd test\x00add a2\x00").unwrap();
+        let _ = in_writer.write(b"cd test\x00add a/2\x00").unwrap();
 
         assert_eq!(mr.read(), "done");
         assert_eq!(mr.read(), "clear");
@@ -162,7 +162,7 @@ fn run() {
         assert_eq!(files, ["+a/1/2.txt", "+a/1/3.txt"]);
         assert_eq!(mr.read(), "done");
 
-        let _ = in_writer.write(b"cd test\x00add a2\x00").unwrap();
+        let _ = in_writer.write(b"cd test\x00add a/2\x00").unwrap();
 
         assert_eq!(mr.read(), "clear");
         assert_eq!(mr.read(), "started");
