@@ -122,13 +122,14 @@ fn exceed_window_size() {
             .write(b"cd test\x00window_size 1\x00add 1\x00")
             .unwrap();
 
-        assert_eq!(mr.read(), "clear");
         assert_eq!(mr.read(), "started");
         let mut files = [mr.read()];
         files.sort();
         assert!(files == ["+a/1/2.txt"] || files == ["+a/1/3.txt"]);
 
-        let _ = in_writer.write(b"cd test\x00add a/2\x00").unwrap();
+        let _ = in_writer
+            .write(b"stop-search\x00cd test\x00add a/2\x00")
+            .unwrap();
 
         assert_eq!(mr.read(), "done");
         assert_eq!(mr.read(), "clear");
@@ -154,7 +155,6 @@ fn run() {
 
         let _ = in_writer.write(b"cd test\x00window_size 3\x00").unwrap();
 
-        assert_eq!(mr.read(), "clear");
         assert_eq!(mr.read(), "started");
 
         let mut files = [mr.read(), mr.read()];
@@ -162,7 +162,9 @@ fn run() {
         assert_eq!(files, ["+a/1/2.txt", "+a/1/3.txt"]);
         assert_eq!(mr.read(), "done");
 
-        let _ = in_writer.write(b"cd test\x00add a/2\x00").unwrap();
+        let _ = in_writer
+            .write(b"stop-search\x00cd test\x00add a/2\x00")
+            .unwrap();
 
         assert_eq!(mr.read(), "clear");
         assert_eq!(mr.read(), "started");

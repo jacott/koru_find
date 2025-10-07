@@ -58,7 +58,6 @@ fn remove() {
 
     walker.command("add", "123").unwrap();
 
-    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkStarted);
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkDone);
 
@@ -67,6 +66,45 @@ fn remove() {
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkStarted);
     assert_eq!(to_raf(&mut rx, 2), "+a/1/2.txt +a/1/3.txt");
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkDone);
+}
+
+#[test]
+fn stop_search() {
+    let (tx, mut rx) = mpsc::sync_channel(5);
+    let win = Window::new(5, tx);
+    let mut walker = Walker::new(win);
+
+    walker.command("cd", "test").unwrap();
+    wait_running(&mut walker, WT);
+    let _ = rx.try_iter().take(5).count();
+
+    walker.command("set", "0 1/3").unwrap();
+    wait_running(&mut walker, WT);
+    assert_eq!(to_raf(&mut rx, 1), "-a/1/2.txt");
+    assert_matches!(rx.try_recv(), Err(_));
+
+    walker.command("stop-search", "").unwrap();
+
+    walker.command("set", "0 >2.txt ").unwrap();
+    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
+
+    assert_matches!(rx.try_recv(), Err(_));
+    walker.command("cd", "test").unwrap();
+    walker.command("set", "8 a/1").unwrap();
+
+    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkStarted);
+    assert_eq!(to_raf(&mut rx, 1), "+a/1/2.txt");
+    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkDone);
+    assert_matches!(rx.try_recv(), Err(_));
+
+    walker.command("ignore", "foo").unwrap();
+    assert_eq!(walker.visitor.ignore_pattern.clone_text(), "foo");
+    assert_eq!(walker.visitor.pattern.clone_text(), ">2.txt a/1");
+
+    walker.command("stop-search", "").unwrap();
+
+    assert_eq!(walker.visitor.pattern.clone_text(), "");
+    assert_eq!(walker.visitor.ignore_pattern.clone_text(), "");
 }
 
 #[test]
@@ -110,7 +148,6 @@ fn remove_unmatched() {
 
     walker.command("add", "1").unwrap();
 
-    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkStarted);
     assert_eq!(to_raf(&mut rx, 2), "+a/1/2.txt +a/1/3.txt");
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkDone);
@@ -130,7 +167,6 @@ fn ends_with() {
 
     walker.command("add", ">.t").unwrap();
 
-    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkStarted);
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkDone);
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkStarted);
@@ -155,11 +191,11 @@ fn add() {
 
     walker.command("add", "1").unwrap();
 
-    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkStarted);
     assert_eq!(to_raf(&mut rx, 2), "+a/1/2.txt +a/1/3.txt");
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkDone);
 
+    walker.command("stop-search", "").unwrap();
     walker.command("cd", "test/a/1").unwrap();
     walker.command("add", "2.t").unwrap();
 

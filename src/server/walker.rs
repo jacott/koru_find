@@ -1,5 +1,5 @@
 use std::{
-    fs, io,
+    env, fs, io,
     os::unix::ffi::OsStrExt,
     path::PathBuf,
     sync::{Arc, atomic},
@@ -23,6 +23,7 @@ pub enum Error {
     InvalidArgument,
     NotADirectory,
     UnknownCommand(String),
+    CdInvalid,
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -158,6 +159,10 @@ impl VisitorBuilder {
         self.walker_version.kill();
         self.out.killed();
     }
+
+    fn is_killed(&self) -> bool {
+        self.walker_version.is_wrong()
+    }
 }
 impl<'s> ParallelVisitorBuilder<'s> for VisitorBuilder {
     fn build(&mut self) -> Box<dyn ignore::ParallelVisitor + 's> {
@@ -196,17 +201,23 @@ impl Walker {
         match ct {
             "cd" => match self.cd(arg) {
                 Ok(()) => {
-                    self.visitor.out.clear();
                     self.ensure_running();
                 }
                 Err(err) => {
                     self.message(format!("cd {arg} failed: {err:?}"));
                 }
             },
+            "stop-search" => {
+                self.kill_running();
+                self.visitor.out.clear();
+                self.pattern.reset();
+                self.ignore_pattern.reset();
+            }
             "add" => self.change_pattern(self.pattern.add(arg)),
             "ignore" => {
-                self.kill_running();
                 self.ignore_pattern.set(0, arg);
+                self.kill_running();
+                self.visitor.out.clear();
             }
 
             "rm" => self.change_pattern(
@@ -238,12 +249,14 @@ impl Walker {
     }
 
     fn change_pattern(&mut self, scope: PatternScope) {
-        if !matches!(scope, PatternScope::Narrow) {
-            self.kill_running();
-            self.visitor.out.remove_unmatched();
-            self.ensure_running();
-        } else {
-            self.visitor.out.remove_unmatched();
+        if !self.visitor.is_killed() {
+            if !matches!(scope, PatternScope::Narrow) {
+                self.kill_running();
+                self.visitor.out.remove_unmatched();
+                self.ensure_running();
+            } else {
+                self.visitor.out.remove_unmatched();
+            }
         }
     }
 
@@ -256,24 +269,26 @@ impl Walker {
                 .map_err(|_| Error::InvalidArgument)?
                 .to_str()
                 .ok_or(Error::Utf8Error)?;
-            self.path =
-                fs::canonicalize(format!("{}/{rest}/", env!("HOME"),)).map_err(Error::from_io)?;
+            self.path = fs::canonicalize(format!(
+                "{}/{rest}/",
+                env::var("HOME").map_err(|_| Error::CdInvalid)?
+            ))
+            .map_err(Error::from_io)?;
         }
         if !self.path.is_dir() {
             return Err(Error::NotADirectory);
         }
         self.path.push("");
         self.kill_running();
-        self.pattern.reset();
         self.visitor.dir_len = self.path.as_os_str().len();
         Ok(())
     }
 
     fn kill_running(&mut self) {
+        self.visitor.kill();
         let Some(t) = self.walker_thread.take() else {
             return;
         };
-        self.visitor.kill();
         self.walker_thread = None;
         let _ = t.join();
     }
