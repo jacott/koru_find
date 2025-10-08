@@ -11,6 +11,45 @@ fn empty_pattern() {
 }
 
 #[test]
+fn regex_search() {
+    let pattern = Pattern::default();
+    pattern.add("*x+y");
+    assert!(!pattern.all_matches(b""));
+    assert!(!pattern.all_matches(b"xxay"));
+    assert!(pattern.all_matches(b"xxy"));
+
+    pattern.add("[");
+    assert!(pattern.read_matcher().bad_regex.is_some());
+
+    assert!(pattern.all_matches(b"xxy"));
+    assert!(!pattern.all_matches(b"xx"));
+
+    pattern.add("ab]");
+    assert!(pattern.read_matcher().bad_regex.is_none());
+
+    assert!(pattern.all_matches(b"xxya"));
+    assert!(pattern.all_matches(b"xxyb"));
+    assert!(!pattern.all_matches(b"xxb"));
+    assert!(!pattern.all_matches(b"xxyc"));
+
+    pattern.add(" *[");
+    assert!(pattern.read_matcher().bad_regex.is_some());
+
+    assert!(pattern.all_matches(b"xxyb"));
+
+    pattern.add("qr]");
+
+    assert!(pattern.all_matches(b"rxxyb"));
+    assert!(!pattern.all_matches(b"xxyb"));
+
+    pattern.add(" *[");
+    pattern.add(" hello");
+
+    assert!(pattern.all_matches(b"rxxyb hello"));
+    assert!(!pattern.all_matches(b"rxxyb"));
+}
+
+#[test]
 fn trailing_escape_regex() {
     let pattern = Pattern::default();
     pattern.add("\\");
@@ -192,6 +231,7 @@ fn rm() {
 fn and_search() {
     let pattern = Pattern::default();
     pattern.add("hell");
+
     assert_matches!(pattern.add("o world"), PatternScope::Narrow);
     assert!(pattern.all_matches(b" world hello"));
     assert!(pattern.any_matches(b" world hello"));
@@ -221,13 +261,11 @@ fn regex_chars() {
 }
 
 #[test]
-fn convert_to_re() {
-    let pattern = Pattern::default();
+fn fuzzy_build() {
+    let (esc, p) = super::fuzzy_build(false, "a\\\\\\c([.*]\\s)");
     assert_eq!(
-        &pattern
-            .write_matcher()
-            .relaxed_re("a\\\\\\c([.*]\\s)")
-            .as_str(),
+        &p,
         &"a[^/]*\\\\[^/]*c[^/]*\\([^/]*\\[[^/]*\\.[^/]*\\*[^/]*\\][^/]* [^/]*\\)[^/]*"
     );
+    assert!(!esc);
 }

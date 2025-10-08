@@ -13,29 +13,10 @@ pub enum PatternScope {
 }
 
 #[derive(Debug)]
-enum Ptype {
-    Regex(Regex),
-}
-impl Ptype {
-    fn is_match(&self, haystack: &[u8]) -> bool {
-        match self {
-            Ptype::Regex(regex) => regex.is_match(haystack),
-        }
-    }
-
-    fn extend(&mut self, p: &str) {
-        match self {
-            Ptype::Regex(regex) => {
-                *regex = make_regex(format!("{regex}{p}").as_str());
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
 enum AddMode {
     New,
-    Ptype,
+    Fuzzy,
+    Regex,
     StartsWith,
     EndsWith,
 }
@@ -47,12 +28,13 @@ impl Default for AddMode {
 
 #[derive(Default)]
 struct Matcher {
-    patterns: Vec<Ptype>,
+    patterns: Vec<Regex>,
     starts_with: Option<Vec<u8>>,
     ends_with: Option<Vec<u8>>,
     mode: AddMode,
     escape: bool,
     text: String,
+    bad_regex: Option<String>,
 }
 impl Matcher {
     fn add(&mut self, text: &str) -> PatternScope {
@@ -64,13 +46,8 @@ impl Matcher {
             match iter.next() {
                 Some("") => {}
                 Some(p) => match self.mode {
-                    AddMode::Ptype => {
-                        let p = self.relaxed_re(p);
-                        self.patterns
-                            .last_mut()
-                            .expect("Last should exist")
-                            .extend(&p)
-                    }
+                    AddMode::Fuzzy => self.extend_regex(fuzzy_build(self.escape, p)),
+                    AddMode::Regex => self.extend_regex(regex_build(self.escape, p)),
                     AddMode::StartsWith => self.extend_starts_with(p),
                     AddMode::EndsWith => {
                         scope = PatternScope::Change;
@@ -85,6 +62,10 @@ impl Matcher {
         }
 
         for p in iter {
+            if self.bad_regex.is_some() {
+                self.bad_regex.take();
+                self.patterns.pop();
+            }
             match p.chars().next() {
                 Some('<') => {
                     self.extend_starts_with(&p[1..]);
@@ -97,10 +78,13 @@ impl Matcher {
                     }
                     self.mode = AddMode::EndsWith;
                 }
+                Some('*') => {
+                    self.add_regex(regex_build(false, &p[1..]));
+                    self.mode = AddMode::Regex;
+                }
                 Some(_) => {
-                    let p = self.relaxed_re(p);
-                    self.patterns.push(Ptype::Regex(make_regex(&p)));
-                    self.mode = AddMode::Ptype;
+                    self.add_regex(fuzzy_build(false, p));
+                    self.mode = AddMode::Fuzzy;
                 }
                 None => {
                     self.mode = AddMode::New;
@@ -180,33 +164,6 @@ impl Matcher {
         self.ends_with = Some(current);
     }
 
-    fn relaxed_re(&mut self, text: &str) -> String {
-        let mut esc = self.escape;
-        let re = text
-            .chars()
-            .filter_map(|mut c| {
-                if esc || c != '\\' {
-                    if esc {
-                        esc = false;
-                        if c == 's' {
-                            c = ' '
-                        }
-                    }
-                    if c == '/' {
-                        Some("/.*".to_owned())
-                    } else {
-                        Some(format!("{}[^/]*", regex::escape(&c.to_string())))
-                    }
-                } else {
-                    esc = true;
-                    None
-                }
-            })
-            .collect();
-        self.escape = esc;
-        re
-    }
-
     fn unescape_extend(&mut self, text: &mut Vec<u8>, ext: &str) {
         let mut esc = self.escape;
         let mut buf = [0; 4];
@@ -226,16 +183,80 @@ impl Matcher {
         }
         self.escape = esc;
     }
+
+    fn extend_regex(&mut self, esc_p: (bool, String)) {
+        let lre = self.patterns.last_mut().expect("Last should exist");
+        let last = match self.bad_regex.take() {
+            Some(s) => s,
+            None => lre.to_string(),
+        };
+        self.escape = esc_p.0;
+        let restr = format!("{last}{}", &esc_p.1);
+        match make_regex(&restr) {
+            Ok(regex) => *lre = regex,
+            Err(_) => {
+                self.bad_regex = Some(restr);
+            }
+        }
+    }
+
+    fn add_regex(&mut self, esc_p: (bool, String)) {
+        self.escape = esc_p.0;
+        self.patterns.push(match make_regex(&esc_p.1) {
+            Ok(regex) => regex,
+            Err(_) => {
+                self.bad_regex = Some(esc_p.1);
+                Regex::new("").expect("Empty regex should be valid")
+            }
+        });
+    }
 }
 
-fn make_regex(text: &str) -> Regex {
+fn fuzzy_build(mut esc: bool, text: &str) -> (bool, String) {
+    let text = text
+        .chars()
+        .filter_map(|mut c| {
+            if esc || c != '\\' {
+                if esc {
+                    esc = false;
+                    if c == 's' {
+                        c = ' '
+                    }
+                }
+                if c == '/' {
+                    Some("/.*".to_owned())
+                } else {
+                    Some(format!("{}[^/]*", regex::escape(&c.to_string())))
+                }
+            } else {
+                esc = true;
+                None
+            }
+        })
+        .collect();
+    (esc, text)
+}
+
+fn regex_build(esc: bool, text: &str) -> (bool, String) {
+    let lesc = text.ends_with('\\');
+    let text = if lesc { &text[0..text.len() - 1] } else { text };
+    (
+        lesc,
+        if esc {
+            format!("\\{text}")
+        } else {
+            text.to_owned()
+        },
+    )
+}
+
+fn make_regex(text: &str) -> Result<Regex, regex::Error> {
     RegexBuilder::new(text)
         .case_insensitive(text == text.to_lowercase())
         .size_limit(50000)
         .unicode(false)
         .swap_greed(true)
         .build()
-        .unwrap()
 }
 
 #[derive(Default)]
