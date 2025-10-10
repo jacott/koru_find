@@ -215,8 +215,13 @@ impl Window {
     }
 
     #[inline(always)]
-    pub(crate) fn message(&self, msg: String) {
+    pub fn message(&self, msg: String) {
         let _ = self.inner.out.send(Msg::Message(msg));
+    }
+
+    #[inline(always)]
+    pub fn request_resync(&self) {
+        let _ = self.inner.out.send(Msg::Resync);
     }
 }
 

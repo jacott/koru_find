@@ -6,19 +6,24 @@ use super::*;
 
 const WT: Duration = Duration::from_millis(200);
 
-fn to_raf(rx: &mut mpsc::Receiver<Msg>, count: usize) -> String {
-    let mut msg = rx
-        .iter()
-        .take(count)
-        .map(|m| match m {
+fn to_raf(rx: &mut mpsc::Receiver<Msg>, mut count: usize) -> String {
+    let mut result = vec![];
+    while count > 0
+        && let Ok(m) = rx.recv_timeout(WT)
+    {
+        count -= 1;
+        let (t, b) = match m {
             Msg::AddFile(bytes) => ("+", bytes),
             Msg::RmFile(bytes) => ("-", bytes),
-            o => panic!("Unexpected {o:?}"),
-        })
-        .map(|(t, b)| format!("{t}{}", str::from_utf8(b.as_ref()).unwrap()))
-        .collect::<Vec<_>>();
-    msg.sort();
-    msg.join(" ")
+            o => ("unexpected ", Bytes::from_owner(format!("{o:?}"))),
+        };
+        result.push(format!("{t}{}", str::from_utf8(b.as_ref()).unwrap()));
+    }
+    if count > 0 {
+        result.push("timeout".to_string());
+    }
+    result.sort();
+    result.join(" ")
 }
 
 pub fn wait_running(walker: &mut Walker, timeout: Duration) {
@@ -35,6 +40,28 @@ pub fn wait_running(walker: &mut Walker, timeout: Duration) {
     });
 
     let _ = rx.recv_timeout(timeout).unwrap();
+}
+
+#[test]
+fn match_command() {
+    let (tx, mut rx) = mpsc::sync_channel(5);
+    let win = Window::new(5, tx);
+    let mut walker = Walker::new(win);
+    assert!(!walker.is_walking);
+
+    walker.command("add", "123").unwrap();
+
+    walker.command("match", "123456").unwrap();
+    walker.command("match", "456").unwrap();
+    walker.command("match", "012hello3").unwrap();
+
+    assert_eq!(to_raf(&mut rx, 2), "+012hello3 +123456");
+
+    walker.command("add", "4").unwrap();
+
+    assert_eq!(to_raf(&mut rx, 1), "-012hello3");
+    walker.command("rm", "1").unwrap();
+    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Resync);
 }
 
 #[test]
@@ -88,6 +115,7 @@ fn stop() {
     walker.command("set", "0 >2.txt ").unwrap();
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
 
+    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Resync);
     assert_matches!(rx.try_recv(), Err(_));
     walker.command("walk", "test").unwrap();
     walker.command("set", "8 a/1").unwrap();

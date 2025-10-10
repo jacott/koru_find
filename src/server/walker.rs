@@ -2,7 +2,7 @@ use std::{
     env, fs, io,
     os::unix::ffi::OsStrExt,
     path::PathBuf,
-    sync::{Arc, atomic},
+    sync::{Arc, atomic, mpsc},
     thread,
 };
 
@@ -72,6 +72,7 @@ pub enum Msg {
     RmFile(Bytes),
     WalkStarted,
     Message(String),
+    Resync,
 }
 impl Msg {
     pub(crate) fn write(&self, out: &mut impl io::Write) -> Result<(), io::Error> {
@@ -79,6 +80,7 @@ impl Msg {
             Msg::Clear => out.write_all(b"clear\x00")?,
             Msg::WalkDone => out.write_all(b"done\x00")?,
             Msg::WalkStarted => out.write_all(b"started\x00")?,
+            Msg::Resync => out.write_all(b"resync\x00")?,
             Msg::Message(m) => out.write_all(format!("message {m}\x00").as_bytes())?,
             Msg::AddFile(msg) => {
                 out.write_all(b"+")?;
@@ -159,10 +161,6 @@ impl VisitorBuilder {
         self.walker_version.kill();
         self.out.killed();
     }
-
-    fn is_killed(&self) -> bool {
-        self.walker_version.is_wrong()
-    }
 }
 impl<'s> ParallelVisitorBuilder<'s> for VisitorBuilder {
     fn build(&mut self) -> Box<dyn ignore::ParallelVisitor + 's> {
@@ -182,6 +180,9 @@ pub struct Walker {
     path: PathBuf,
     visitor: VisitorBuilder,
     walker_thread: Option<thread::JoinHandle<()>>,
+    match_thread: Option<thread::JoinHandle<()>>,
+    match_sender: Option<mpsc::Sender<Bytes>>,
+    is_walking: bool,
 }
 impl Walker {
     pub fn new(out: Window) -> Self {
@@ -194,6 +195,9 @@ impl Walker {
             path: "./".into(),
             visitor,
             walker_thread: None,
+            match_thread: None,
+            match_sender: None,
+            is_walking: false,
         }
     }
 
@@ -207,7 +211,9 @@ impl Walker {
                     self.message(format!("walk {arg} failed: {err:?}"));
                 }
             },
+            "match" => self.match_line(arg),
             "stop" => {
+                self.is_walking = false;
                 self.kill_running();
                 self.visitor.out.clear();
                 self.pattern.reset();
@@ -251,14 +257,15 @@ impl Walker {
     }
 
     fn change_pattern(&mut self, scope: PatternScope) {
-        if !self.visitor.is_killed() {
-            if !matches!(scope, PatternScope::Narrow) {
-                self.kill_running();
-                self.visitor.out.remove_unmatched();
-                self.ensure_running();
-            } else {
-                self.visitor.out.remove_unmatched();
-            }
+        if matches!(scope, PatternScope::Narrow) {
+            self.visitor.out.remove_unmatched();
+        } else if self.is_walking {
+            self.kill_running();
+            self.visitor.out.remove_unmatched();
+            self.ensure_running();
+        } else {
+            self.kill_match_thread();
+            self.visitor.out.request_resync();
         }
     }
 
@@ -282,7 +289,9 @@ impl Walker {
         }
         self.path.push("");
         self.kill_running();
+        self.kill_match_thread();
         self.visitor.dir_len = self.path.as_os_str().len();
+        self.is_walking = true;
         Ok(())
     }
 
@@ -291,7 +300,14 @@ impl Walker {
         let Some(t) = self.walker_thread.take() else {
             return;
         };
-        self.walker_thread = None;
+        let _ = t.join();
+    }
+
+    fn kill_match_thread(&mut self) {
+        let Some(t) = self.match_thread.take() else {
+            return;
+        };
+        self.match_sender = None;
         let _ = t.join();
     }
 
@@ -306,6 +322,26 @@ impl Walker {
                 builder.out.done();
             }));
         }
+    }
+
+    fn match_line(&mut self, arg: &str) {
+        if self.match_thread.is_none() {
+            let (tx, rx) = mpsc::channel();
+            self.match_sender = Some(tx);
+            self.visitor.walker_version.start();
+            let walker_version = self.visitor.walker_version.clone();
+            let builder = self.visitor.clone();
+            self.match_thread = Some(thread::spawn(move || {
+                for msg in rx.iter() {
+                    builder.out.add(msg, 0, &walker_version);
+                }
+            }))
+        }
+        if let Some(tx) = &self.match_sender
+            && tx.send(Bytes::copy_from_slice(arg.as_bytes())).is_err()
+        {
+            self.kill_match_thread();
+        };
     }
 }
 

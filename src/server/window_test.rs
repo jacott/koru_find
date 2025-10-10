@@ -53,9 +53,8 @@ fn remove_unmatched() {
 
 #[test]
 fn redraw() {
-    let (tx, mut rx) = mpsc::sync_channel(50);
+    let (tx, rx) = mpsc::sync_channel(50);
     let w = Window::new(3, tx);
-    let w2 = w.clone();
     w.inner.pattern.add("o");
 
     let wv = WalkerVersion::default();
