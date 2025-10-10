@@ -219,7 +219,6 @@ impl Walker {
                 self.kill_running();
                 self.visitor.out.clear();
             }
-
             "rm" => self.change_pattern(
                 self.pattern
                     .rm(arg.parse().map_err(|_| Error::InvalidArgument)?),
@@ -230,6 +229,9 @@ impl Walker {
                     self.pattern
                         .set(start.parse().map_err(|_| Error::InvalidArgument)?, text),
                 );
+            }
+            "redraw" => {
+                self.visitor.out.redraw();
             }
             "window_size" => {
                 self.visitor

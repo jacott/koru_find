@@ -108,6 +108,23 @@ fn stop_search() {
 }
 
 #[test]
+fn redraw() {
+    let (tx, mut rx) = mpsc::sync_channel(5);
+    let win = Window::new(5, tx);
+    let mut walker = Walker::new(win);
+
+    walker.command("cd", "test").unwrap();
+    walker.command("set", "0 txt").unwrap();
+
+    let _ = rx.try_iter().take(5).count();
+
+    walker.command("redraw", "").unwrap();
+    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
+    assert_eq!(to_raf(&mut rx, 2), "+a/1/2.txt +a/1/3.txt");
+    assert_matches!(rx.try_recv(), Err(_));
+}
+
+#[test]
 fn set() {
     let (tx, mut rx) = mpsc::sync_channel(5);
     let win = Window::new(5, tx);

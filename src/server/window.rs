@@ -74,6 +74,14 @@ impl Inner {
         self.cvar.notify_all();
     }
 
+    fn redraw(&self) {
+        let _ = self.out.send(Msg::Clear);
+        let content = self.content();
+        for entry in content.iter() {
+            let _ = self.out.send(Msg::AddFile(entry.to_owned()));
+        }
+    }
+
     fn killed(&self) {
         let _content = self.content();
         self.cvar.notify_all();
@@ -184,6 +192,11 @@ impl Window {
     #[inline(always)]
     pub fn clear(&self) {
         self.inner.clear();
+    }
+
+    #[inline(always)]
+    pub fn redraw(&self) {
+        self.inner.redraw();
     }
 
     #[inline(always)]

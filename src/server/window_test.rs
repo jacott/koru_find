@@ -1,6 +1,10 @@
 use std::{sync::mpsc, thread, time::Duration};
 
+use pretty_assertions::assert_matches;
+
 use super::*;
+
+const WT: Duration = Duration::from_millis(200);
 
 fn content_to_string(w: &Window) -> String {
     let guard = w.inner.content();
@@ -45,6 +49,28 @@ fn remove_unmatched() {
         .join(" ");
 
     assert_eq!(msg, "+world +hello +odd -hello -odd")
+}
+
+#[test]
+fn redraw() {
+    let (tx, mut rx) = mpsc::sync_channel(50);
+    let w = Window::new(3, tx);
+    let w2 = w.clone();
+    w.inner.pattern.add("o");
+
+    let wv = WalkerVersion::default();
+    let add = |t, n| w.add(t, n, &wv).unwrap();
+
+    add("world", 1);
+    add("hello", 1);
+
+    let _ = rx.try_iter().take(5).count();
+
+    w.redraw();
+
+    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
+    assert_matches!(rx.recv_timeout(WT).unwrap(), Msg::AddFile(x) if x.as_ref() == b"hello");
+    assert_matches!(rx.recv_timeout(WT).unwrap(), Msg::AddFile(x) if x.as_ref() == b"world");
 }
 
 #[test]
