@@ -69,7 +69,7 @@ fn remove() {
 }
 
 #[test]
-fn stop_search() {
+fn stop() {
     let (tx, mut rx) = mpsc::sync_channel(5);
     let win = Window::new(5, tx);
     let mut walker = Walker::new(win);
@@ -83,7 +83,7 @@ fn stop_search() {
     assert_eq!(to_raf(&mut rx, 1), "-a/1/2.txt");
     assert_matches!(rx.try_recv(), Err(_));
 
-    walker.command("stop-search", "").unwrap();
+    walker.command("stop", "").unwrap();
 
     walker.command("set", "0 >2.txt ").unwrap();
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
@@ -101,7 +101,7 @@ fn stop_search() {
     assert_eq!(walker.visitor.ignore_pattern.clone_text(), "foo");
     assert_eq!(walker.visitor.pattern.clone_text(), ">2.txt a/1");
 
-    walker.command("stop-search", "").unwrap();
+    walker.command("stop", "").unwrap();
 
     assert_eq!(walker.visitor.pattern.clone_text(), "");
     assert_eq!(walker.visitor.ignore_pattern.clone_text(), "");
@@ -212,7 +212,7 @@ fn add() {
     assert_eq!(to_raf(&mut rx, 2), "+a/1/2.txt +a/1/3.txt");
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkDone);
 
-    walker.command("stop-search", "").unwrap();
+    walker.command("stop", "").unwrap();
     walker.command("walk", "test/a/1").unwrap();
     walker.command("add", "2.t").unwrap();
 

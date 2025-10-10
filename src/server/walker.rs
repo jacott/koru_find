@@ -207,7 +207,7 @@ impl Walker {
                     self.message(format!("walk {arg} failed: {err:?}"));
                 }
             },
-            "stop-search" => {
+            "stop" => {
                 self.kill_running();
                 self.visitor.out.clear();
                 self.pattern.reset();
