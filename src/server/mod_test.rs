@@ -86,7 +86,7 @@ fn command_reader() {
 
     data.lock()
         .unwrap()
-        .extend_from_slice(b"ignore >_test.rs\x00window_size 85\x00cd ~/src/koru-find\x00");
+        .extend_from_slice(b"ignore >_test.rs\x00window_size 85\x00walk ~/src/koru-find\x00");
 
     cr.read().unwrap();
     let (c, a) = cr.get_cmd().unwrap();
@@ -100,7 +100,7 @@ fn command_reader() {
 
     cr.read().unwrap();
     let (c, a) = cr.get_cmd().unwrap();
-    assert_eq!(c, "cd");
+    assert_eq!(c, "walk");
     assert_eq!(a, "~/src/koru-find");
 
     assert_matches!(cr.read(), Err(walker::Error::Eof));
@@ -119,7 +119,7 @@ fn exceed_window_size() {
         let mut mr = MsgReader::new(out_reader);
 
         let _ = in_writer
-            .write(b"cd test\x00window_size 1\x00add 1\x00")
+            .write(b"walk test\x00window_size 1\x00add 1\x00")
             .unwrap();
 
         assert_eq!(mr.read(), "started");
@@ -128,7 +128,7 @@ fn exceed_window_size() {
         assert!(files == ["+a/1/2.txt"] || files == ["+a/1/3.txt"]);
 
         let _ = in_writer
-            .write(b"stop-search\x00cd test\x00add a/2\x00")
+            .write(b"stop-search\x00walk test\x00add a/2\x00")
             .unwrap();
 
         assert_eq!(mr.read(), "done");
@@ -153,7 +153,7 @@ fn run() {
     let _ = thread::spawn(move || {
         let mut mr = MsgReader::new(out_reader);
 
-        let _ = in_writer.write(b"cd test\x00window_size 3\x00").unwrap();
+        let _ = in_writer.write(b"walk test\x00window_size 3\x00").unwrap();
 
         assert_eq!(mr.read(), "started");
 
@@ -163,7 +163,7 @@ fn run() {
         assert_eq!(mr.read(), "done");
 
         let _ = in_writer
-            .write(b"stop-search\x00cd test\x00add a/2\x00")
+            .write(b"stop-search\x00walk test\x00add a/2\x00")
             .unwrap();
 
         assert_eq!(mr.read(), "clear");

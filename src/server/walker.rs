@@ -199,12 +199,12 @@ impl Walker {
 
     pub fn command(&mut self, ct: &str, arg: &str) -> Result<(), Error> {
         match ct {
-            "cd" => match self.cd(arg) {
+            "walk" => match self.walk(arg) {
                 Ok(()) => {
                     self.ensure_running();
                 }
                 Err(err) => {
-                    self.message(format!("cd {arg} failed: {err:?}"));
+                    self.message(format!("walk {arg} failed: {err:?}"));
                 }
             },
             "stop-search" => {
@@ -262,7 +262,7 @@ impl Walker {
         }
     }
 
-    fn cd(&mut self, dir: &str) -> Result<(), Error> {
+    fn walk(&mut self, dir: &str) -> Result<(), Error> {
         self.path = dir.into();
         if self.path.starts_with("~/") {
             let rest = &self

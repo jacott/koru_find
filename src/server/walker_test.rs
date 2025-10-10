@@ -54,7 +54,7 @@ fn remove() {
     let win = Window::new(5, tx);
     let mut walker = Walker::new(win);
 
-    walker.command("cd", "test").unwrap();
+    walker.command("walk", "test").unwrap();
 
     walker.command("add", "123").unwrap();
 
@@ -74,7 +74,7 @@ fn stop_search() {
     let win = Window::new(5, tx);
     let mut walker = Walker::new(win);
 
-    walker.command("cd", "test").unwrap();
+    walker.command("walk", "test").unwrap();
     wait_running(&mut walker, WT);
     let _ = rx.try_iter().take(5).count();
 
@@ -89,7 +89,7 @@ fn stop_search() {
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
 
     assert_matches!(rx.try_recv(), Err(_));
-    walker.command("cd", "test").unwrap();
+    walker.command("walk", "test").unwrap();
     walker.command("set", "8 a/1").unwrap();
 
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkStarted);
@@ -113,7 +113,7 @@ fn redraw() {
     let win = Window::new(5, tx);
     let mut walker = Walker::new(win);
 
-    walker.command("cd", "test").unwrap();
+    walker.command("walk", "test").unwrap();
     walker.command("set", "0 txt").unwrap();
 
     let _ = rx.try_iter().take(5).count();
@@ -130,7 +130,7 @@ fn set() {
     let win = Window::new(5, tx);
     let mut walker = Walker::new(win);
 
-    walker.command("cd", "test").unwrap();
+    walker.command("walk", "test").unwrap();
     wait_running(&mut walker, WT);
     let _ = rx.try_iter().take(5).count();
 
@@ -161,7 +161,7 @@ fn remove_unmatched() {
     let win = Window::new(5, tx);
     let mut walker = Walker::new(win);
 
-    walker.command("cd", "test").unwrap();
+    walker.command("walk", "test").unwrap();
 
     walker.command("add", "1").unwrap();
 
@@ -180,7 +180,7 @@ fn ends_with() {
     let win = Window::new(5, tx);
     let mut walker = Walker::new(win);
 
-    walker.command("cd", "test/").unwrap();
+    walker.command("walk", "test/").unwrap();
 
     walker.command("add", ">.t").unwrap();
 
@@ -204,7 +204,7 @@ fn add() {
     let win = Window::new(5, tx);
     let mut walker = Walker::new(win);
 
-    walker.command("cd", "test/").unwrap();
+    walker.command("walk", "test/").unwrap();
 
     walker.command("add", "1").unwrap();
 
@@ -213,7 +213,7 @@ fn add() {
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkDone);
 
     walker.command("stop-search", "").unwrap();
-    walker.command("cd", "test/a/1").unwrap();
+    walker.command("walk", "test/a/1").unwrap();
     walker.command("add", "2.t").unwrap();
 
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
@@ -231,7 +231,7 @@ fn ignore_pattern() {
     let mut walker = Walker::new(win);
     walker.command("ignore", ">2.txt").unwrap();
 
-    walker.command("cd", "test/").unwrap();
+    walker.command("walk", "test/").unwrap();
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::WalkStarted);
     assert_eq!(to_raf(&mut rx, 1), "+a/1/3.txt");
