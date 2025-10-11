@@ -217,13 +217,21 @@ impl Walker {
                 self.kill_running();
                 self.visitor.out.clear();
                 self.pattern.reset();
+                self.pattern.skip_prefix(0);
                 self.ignore_pattern.reset();
+                self.ignore_pattern.skip_prefix(0);
             }
             "add" => self.change_pattern(self.pattern.add(arg)),
             "ignore" => {
                 self.ignore_pattern.set(0, arg);
                 self.kill_running();
                 self.visitor.out.clear();
+            }
+            "skip-prefix" => {
+                let n = arg.parse().map_err(|_| Error::InvalidArgument)?;
+                self.ignore_pattern.skip_prefix(n);
+                self.pattern.skip_prefix(n);
+                self.change_pattern(PatternScope::Change);
             }
             "rm" => self.change_pattern(
                 self.pattern
@@ -337,7 +345,9 @@ impl Walker {
                 }
             }))
         }
-        if let Some(tx) = &self.match_sender
+
+        if !self.ignore_pattern.any_matches(arg.as_bytes())
+            && let Some(tx) = &self.match_sender
             && tx.send(Bytes::copy_from_slice(arg.as_bytes())).is_err()
         {
             self.kill_match_thread();

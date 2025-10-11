@@ -43,6 +43,43 @@ pub fn wait_running(walker: &mut Walker, timeout: Duration) {
 }
 
 #[test]
+fn skip_prefix_command() {
+    let (tx, mut rx) = mpsc::sync_channel(5);
+    let win = Window::new(5, tx);
+    let mut walker = Walker::new(win);
+    assert!(!walker.is_walking);
+
+    walker.command("ignore", "<6").unwrap();
+    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
+
+    walker.command("skip-prefix", "1").unwrap();
+    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Resync);
+
+    walker.command("add", "123").unwrap();
+
+    walker.command("match", "123456").unwrap();
+    walker.command("match", "6123456").unwrap();
+    walker.command("match", "66123456").unwrap();
+    walker.command("match", "456123").unwrap();
+
+    walker.command("rm", "1").unwrap();
+
+    assert_eq!(to_raf(&mut rx, 2), "+456123 +6123456");
+    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Resync);
+
+    walker.command("stop", "").unwrap();
+    walker.command("add", "<123").unwrap();
+    walker.command("match", "123456").unwrap();
+    walker.command("match", "6123456").unwrap();
+
+    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
+    assert_eq!(to_raf(&mut rx, 1), "+123456");
+
+    walker.command("rm", "1").unwrap();
+    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Resync);
+}
+
+#[test]
 fn match_command() {
     let (tx, mut rx) = mpsc::sync_channel(5);
     let win = Window::new(5, tx);

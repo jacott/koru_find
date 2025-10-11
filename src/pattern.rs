@@ -35,6 +35,7 @@ struct Matcher {
     escape: bool,
     text: String,
     bad_regex: Option<String>,
+    skip_prefix: usize,
 }
 impl Matcher {
     fn add(&mut self, text: &str) -> PatternScope {
@@ -120,6 +121,10 @@ impl Matcher {
         PatternScope::Change
     }
 
+    fn skip_prefix(&mut self, n: usize) {
+        self.skip_prefix = n;
+    }
+
     fn reset(&mut self) {
         self.text.truncate(0);
         self.patterns.truncate(0);
@@ -130,6 +135,7 @@ impl Matcher {
 
     fn all_matches(&self, haystack: &[u8]) -> bool {
         self.text.is_empty() || {
+            let haystack = self.adjust_haystack(haystack);
             (match &self.starts_with {
                 Some(needle) => haystack.starts_with(needle),
                 None => true,
@@ -142,6 +148,7 @@ impl Matcher {
 
     fn any_matches(&self, haystack: &[u8]) -> bool {
         !self.text.is_empty() && {
+            let haystack = self.adjust_haystack(haystack);
             (match &self.starts_with {
                 Some(needle) => haystack.starts_with(needle),
                 None => false,
@@ -210,6 +217,14 @@ impl Matcher {
             }
         });
     }
+
+    fn adjust_haystack<'a>(&self, haystack: &'a [u8]) -> &'a [u8] {
+        if self.skip_prefix > 0 {
+            &haystack[min(haystack.len(), self.skip_prefix)..]
+        } else {
+            haystack
+        }
+    }
 }
 
 fn fuzzy_build(mut esc: bool, text: &str) -> (bool, String) {
@@ -276,6 +291,7 @@ impl std::fmt::Debug for Pattern {
             .field("text", &content.text)
             .field("<", &content.starts_with)
             .field(">", &content.ends_with)
+            .field("skip", &content.skip_prefix)
             .field("patterns", &content.patterns)
             .finish()
     }
@@ -313,10 +329,17 @@ impl Pattern {
         self.write_matcher().set(start, text)
     }
 
+    #[inline(always)]
+    pub fn skip_prefix(&self, n: usize) {
+        self.write_matcher().skip_prefix(n);
+    }
+
+    #[inline(always)]
     pub fn reset(&self) {
         self.write_matcher().reset();
     }
 
+    #[inline(always)]
     pub fn clone_text(&self) -> String {
         self.read_matcher().text.clone()
     }

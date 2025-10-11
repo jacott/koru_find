@@ -50,6 +50,18 @@ fn regex_search() {
 }
 
 #[test]
+fn skip_prefix() {
+    let pattern = Pattern::default();
+    pattern.add("<hello");
+    pattern.skip_prefix(1);
+    assert!(!pattern.all_matches(b"hello"));
+    assert!(pattern.all_matches(b"ahello"));
+
+    assert!(!pattern.any_matches(b"hello"));
+    assert!(pattern.any_matches(b"ahello"));
+}
+
+#[test]
 fn trailing_escape_regex() {
     let pattern = Pattern::default();
     pattern.add("\\");
