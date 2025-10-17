@@ -174,6 +174,13 @@ impl<'s> ParallelVisitorBuilder<'s> for VisitorBuilder {
     }
 }
 
+#[derive(Debug)]
+enum MatchState {
+    Walking,
+    Matching,
+    Stopped,
+}
+
 pub struct Walker {
     pattern: Pattern,
     ignore_pattern: Pattern,
@@ -182,7 +189,7 @@ pub struct Walker {
     walker_thread: Option<thread::JoinHandle<()>>,
     match_thread: Option<thread::JoinHandle<()>>,
     match_sender: Option<mpsc::Sender<Bytes>>,
-    is_walking: bool,
+    state: MatchState,
 }
 impl Walker {
     pub fn new(out: Window) -> Self {
@@ -197,7 +204,7 @@ impl Walker {
             walker_thread: None,
             match_thread: None,
             match_sender: None,
-            is_walking: false,
+            state: MatchState::Stopped,
         }
     }
 
@@ -213,8 +220,8 @@ impl Walker {
             },
             "match" => self.match_line(arg),
             "stop" => {
-                self.is_walking = false;
-                self.kill_running();
+                self.kill_thread();
+                self.state = MatchState::Stopped;
                 self.visitor.out.clear();
                 self.pattern.reset();
                 self.pattern.skip_prefix(0);
@@ -224,7 +231,7 @@ impl Walker {
             "add" => self.change_pattern(self.pattern.add(arg)),
             "ignore" => {
                 self.ignore_pattern.set(0, arg);
-                self.kill_running();
+                self.kill_thread();
                 self.visitor.out.clear();
             }
             "skip-prefix" => {
@@ -267,13 +274,19 @@ impl Walker {
     fn change_pattern(&mut self, scope: PatternScope) {
         if matches!(scope, PatternScope::Narrow) {
             self.visitor.out.remove_unmatched();
-        } else if self.is_walking {
-            self.kill_running();
-            self.visitor.out.remove_unmatched();
-            self.ensure_running();
         } else {
-            self.kill_match_thread();
-            self.visitor.out.request_resync();
+            match self.state {
+                MatchState::Walking => {
+                    self.kill_walker();
+                    self.visitor.out.remove_unmatched();
+                    self.ensure_running();
+                }
+                MatchState::Matching => {
+                    self.kill_match_thread();
+                    self.visitor.out.request_resync();
+                }
+                MatchState::Stopped => {}
+            }
         }
     }
 
@@ -296,18 +309,25 @@ impl Walker {
             return Err(Error::NotADirectory);
         }
         self.path.push("");
-        self.kill_running();
-        self.kill_match_thread();
+        self.kill_thread();
         self.visitor.dir_len = self.path.as_os_str().len();
-        self.is_walking = true;
+        self.state = MatchState::Walking;
         Ok(())
     }
 
-    fn kill_running(&mut self) {
-        self.visitor.kill();
+    fn kill_thread(&mut self) {
+        match self.state {
+            MatchState::Walking => self.kill_walker(),
+            MatchState::Matching => self.kill_match_thread(),
+            MatchState::Stopped => {}
+        }
+    }
+
+    fn kill_walker(&mut self) {
         let Some(t) = self.walker_thread.take() else {
             return;
         };
+        self.visitor.kill();
         let _ = t.join();
     }
 
@@ -316,6 +336,7 @@ impl Walker {
             return;
         };
         self.match_sender = None;
+        self.visitor.kill();
         let _ = t.join();
     }
 
@@ -333,6 +354,10 @@ impl Walker {
     }
 
     fn match_line(&mut self, arg: &str) {
+        if matches!(self.state, MatchState::Walking) {
+            self.kill_walker();
+        }
+        self.state = MatchState::Matching;
         if self.match_thread.is_none() {
             let (tx, rx) = mpsc::channel();
             self.match_sender = Some(tx);
@@ -351,6 +376,7 @@ impl Walker {
             && tx.send(Bytes::copy_from_slice(arg.as_bytes())).is_err()
         {
             self.kill_match_thread();
+            self.visitor.out.request_resync();
         };
     }
 }

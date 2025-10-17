@@ -47,24 +47,22 @@ fn skip_prefix_command() {
     let (tx, mut rx) = mpsc::sync_channel(5);
     let win = Window::new(5, tx);
     let mut walker = Walker::new(win);
-    assert!(!walker.is_walking);
+    assert_matches!(walker.state, MatchState::Stopped);
 
     walker.command("ignore", "<6").unwrap();
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
 
     walker.command("skip-prefix", "1").unwrap();
-    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Resync);
-
     walker.command("add", "123").unwrap();
 
     walker.command("match", "123456").unwrap();
     walker.command("match", "6123456").unwrap();
     walker.command("match", "66123456").unwrap();
     walker.command("match", "456123").unwrap();
+    assert_eq!(to_raf(&mut rx, 2), "+456123 +6123456");
 
     walker.command("rm", "1").unwrap();
 
-    assert_eq!(to_raf(&mut rx, 2), "+456123 +6123456");
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Resync);
 
     walker.command("stop", "").unwrap();
@@ -84,7 +82,6 @@ fn match_command() {
     let (tx, mut rx) = mpsc::sync_channel(5);
     let win = Window::new(5, tx);
     let mut walker = Walker::new(win);
-    assert!(!walker.is_walking);
 
     walker.command("add", "123").unwrap();
 
@@ -99,6 +96,39 @@ fn match_command() {
     assert_eq!(to_raf(&mut rx, 1), "-012hello3");
     walker.command("rm", "1").unwrap();
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Resync);
+}
+
+#[test]
+fn match_stalling_bug() {
+    let (tx, mut rx) = mpsc::sync_channel(15);
+    let win = Window::new(5, tx);
+    let mut walker = Walker::new(win);
+
+    walker.command("window_size", "3").unwrap();
+    fn send(walker: &mut Walker) {
+        for i in 0..3 {
+            walker.command("match", format!("a1{i}").as_str()).unwrap();
+            walker.command("match", format!("b1{i}").as_str()).unwrap();
+        }
+    }
+    send(&mut walker);
+
+    assert_eq!(to_raf(&mut rx, 3), "+a10 +a11 +b10");
+    walker.command("add", "a").unwrap();
+    assert_eq!(to_raf(&mut rx, 2), "+a12 -b10");
+    walker.command("add", "3").unwrap();
+    assert_eq!(to_raf(&mut rx, 3), "-a10 -a11 -a12");
+
+    walker.command("rm", "1").unwrap();
+    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Resync);
+    send(&mut walker);
+    assert_eq!(to_raf(&mut rx, 3), "+a10 +a11 +a12");
+    walker.command("rm", "1").unwrap();
+    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Resync);
+    send(&mut walker);
+
+    walker.command("add", "b").unwrap();
+    assert_eq!(to_raf(&mut rx, 6), "+b10 +b11 +b12 -a10 -a11 -a12");
 }
 
 #[test]
@@ -152,7 +182,6 @@ fn stop() {
     walker.command("set", "0 >2.txt ").unwrap();
     assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Clear);
 
-    assert_eq!(rx.recv_timeout(WT).unwrap(), Msg::Resync);
     assert_matches!(rx.try_recv(), Err(_));
     walker.command("walk", "test").unwrap();
     walker.command("set", "8 a/1").unwrap();
